@@ -102,10 +102,10 @@ In the `Equals` function, values are considered to be equivalent if they are:
 1. Both the same data type and values match
 2. One value is nil and the other is the default value for its data type. These 
    values are considered equal:
-    	a. "" and nil
-     	b. 0.0 and nil
-     	c. false and nil
-     	d. empty slice and nil
+    1. "" and nil
+    2. 0.0 and nil
+    3. false and nil
+    4. empty slice and nil
 
 ## Data types
 
