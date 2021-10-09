@@ -1,5 +1,14 @@
 # jsondiff
 
+StructCheck is a convenience function for calling Equal. It is useful for verifying that the
+struct(s) you've created to receive JSON data in your application can losslessly encode and
+decode that JSON data. StructCheck will:
+  1. Open and read the text from an input JSON file
+  2. Encode the text in the JSON file to the result map, struct or slice
+  3. Decode the result map, struct, or slice back to JSON
+  4. Compare the input JSON text with the output JSON text using the Equal function
+  
+
 Equal takes as its input two JSON byte slices and causes tests to fail as appropriate
 if the JSON doesn't match. Values are considered to be equivalent if they are:
   1. Both the same data type and values match

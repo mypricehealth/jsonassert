@@ -1,13 +1,65 @@
 package jsonassert
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"reflect"
 	"testing"
 )
 
 var nilVal = reflect.ValueOf(nil)
+
+// StructCheck is a convenience function for calling Equal. It is useful for verifying that the
+// struct(s) you've created to receive JSON data in your application can losslessly encode and
+// decode that JSON data. StructCheck will:
+//   1. Open and read the text from an input JSON file
+//   2. Encode the text in the JSON file to the result map, struct or slice
+//   3. Decode the result map, struct, or slice back to JSON
+//   4. Compare the input JSON text with the output JSON text using the Equal function
+func StructCheck(t *testing.T, filename string, result interface{}) {
+	var originalText, encodedText bytes.Buffer
+
+	if err := resultArgCheck(result); err != nil {
+		t.Error(err)
+		return
+	}
+
+	f, err := os.Open(filename)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer f.Close()
+
+	r := io.TeeReader(f, &originalText) // save original text to buffer while decoding JSON to result
+	if err := json.NewDecoder(r).Decode(result); err != nil {
+		t.Errorf("error decoding json in %s: %v", filename, err)
+		return
+	}
+
+	if err := json.NewEncoder(&encodedText).Encode(result); err != nil {
+		t.Errorf("error encoding JSON to result: %v", err)
+		return
+	}
+
+	Equal(t, originalText.Bytes(), encodedText.Bytes())
+}
+
+func resultArgCheck(result interface{}) error {
+	resT := reflect.TypeOf(result)
+	resKind := resT.Kind()
+	var elemKind reflect.Kind
+	if resKind == reflect.Ptr {
+		elemKind = resT.Elem().Kind()
+	}
+	if resKind != reflect.Ptr && elemKind != reflect.Struct && elemKind != reflect.Map && elemKind != reflect.Slice && elemKind != reflect.Array {
+		return fmt.Errorf("invalid argument: result must be a pointer to a struct, slice, or map, but got %T", result)
+	}
+	return nil
+}
 
 // Equal takes as its input two JSON byte slices and causes tests to fail as appropriate
 // if the JSON doesn't match. Values are considered to be equivalent if they are:
