@@ -7,10 +7,15 @@ import (
 	"io"
 	"os"
 	"reflect"
-	"testing"
+	"sort"
 )
 
 var nilVal = reflect.ValueOf(nil)
+
+type Testing interface {
+	Error(args ...interface{})
+	Errorf(format string, args ...interface{})
+}
 
 // StructCheck is a convenience function for calling Equal. It is useful for verifying that the
 // struct(s) you've created to receive JSON data in your application can losslessly encode and
@@ -19,7 +24,7 @@ var nilVal = reflect.ValueOf(nil)
 //   2. Encode the text in the JSON file to the result map, struct or slice
 //   3. Decode the result map, struct, or slice back to JSON
 //   4. Compare the input JSON text with the output JSON text using the Equal function
-func StructCheck(t *testing.T, filename string, result interface{}) {
+func StructCheck(t Testing, filename string, result interface{}) {
 	var originalText, encodedText bytes.Buffer
 
 	if err := resultArgCheck(result); err != nil {
@@ -71,7 +76,7 @@ func resultArgCheck(result interface{}) error {
 //      	b. 0.0 and nil
 //      	c. false and nil
 //      	d. empty slice and nil
-func Equal(t *testing.T, json1, json2 []byte) {
+func Equal(t Testing, json1, json2 []byte) {
 	json1Map, err1 := getJSONMap(json1)
 	json2Map, err2 := getJSONMap(json2)
 	if err1 != nil || err2 != nil {
@@ -91,23 +96,35 @@ func getJSONMap(text []byte) (map[string]interface{}, error) {
 	return jsonMap, json.Unmarshal(text, &jsonMap)
 }
 
-func compareMaps(t *testing.T, location string, map1, map2 map[string]interface{}) {
-	for key, value1 := range map1 {
-		compareValues(t, key, value1, map2[key])
+func compareMaps(t Testing, location string, map1, map2 map[string]interface{}) {
+	for _, key := range keys(map1) {
+		compareValues(t, getLocation(location, key), map1[key], map2[key])
 	}
-	for key, value2 := range map2 {
+	for _, key := range keys(map2) {
 		value1, ok := map1[key]
 		if !ok { // matched values were checked in the first loop, so only check missing ones here
-			childLocation := fmt.Sprintf("%s.%s", location, key)
-			if location == "" {
-				childLocation = key
-			}
-			compareValues(t, childLocation, value1, value2)
+			compareValues(t, getLocation(location, key), value1, map2[key])
 		}
 	}
 }
 
-func compareValues(t *testing.T, location string, value1, value2 interface{}) {
+func getLocation(location, key string) string {
+	if location == "" {
+		return key
+	}
+	return fmt.Sprintf("%s.%s", location, key)
+}
+
+func keys(v map[string]interface{}) []string {
+	keys := []string{}
+	for key := range v {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func compareValues(t Testing, location string, value1, value2 interface{}) {
 	switch v1 := value1.(type) {
 	case bool:
 		if !boolEqual(v1, value2) {
@@ -137,8 +154,8 @@ func compareValues(t *testing.T, location string, value1, value2 interface{}) {
 	}
 }
 
-func notifyError(t *testing.T, location string, value1, value2 interface{}) {
-	t.Errorf("%s mismatch.  %v vs. %v", location, quoteString(value1), quoteString(value2))
+func notifyError(t Testing, location string, value1, value2 interface{}) {
+	t.Errorf("%s mismatch. %v vs. %v", location, quoteString(value1), quoteString(value2))
 }
 
 func quoteString(v interface{}) string {
@@ -169,11 +186,12 @@ func stringEqual(value1 string, value2 interface{}) bool {
 	return value1 == value2 || value1 == "" && value2 == nil
 }
 
-func compareSlices(t *testing.T, location string, value1, value2 interface{}) {
+func compareSlices(t Testing, location string, value1, value2 interface{}) {
 	rv1 := reflect.ValueOf(value1)
 	rv2 := reflect.ValueOf(value2)
-	if rv1.Kind() != reflect.Slice && rv2.Kind() != reflect.Slice {
+	if rv1.Kind() != reflect.Slice || (rv2.Kind() != reflect.Slice && rv2 != nilVal) {
 		notifyError(t, location, value1, value2)
+		return
 	}
 	len1 := sliceLen(rv1)
 	if len1 != sliceLen(rv2) {
