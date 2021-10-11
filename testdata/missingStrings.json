@@ -1,0 +1,16 @@
+{
+  "num": 1,
+  "num-empty": 0,
+  "str-empty": "",
+  "b-true": true,
+  "b-false": false,
+  "arr": [
+    "1",
+    "2"
+  ],
+  "arr-empty": [],
+  "obj": {
+    "a": "val"
+  },
+  "obj-empty": {}
+}

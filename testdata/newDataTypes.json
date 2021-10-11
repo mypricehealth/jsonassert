@@ -1,0 +1,19 @@
+{
+  "num": "1",
+  "num-empty": "",
+  "str": 2,
+  "str-empty": 0,
+  "b-true": "true",
+  "b-false": "false",
+  "arr": {
+    "a": "val",
+    "b": "val2"
+  },
+  "arr-empty": {},
+  "obj": [
+    "1",
+    "2",
+    "3"
+  ],
+  "obj-empty": []
+}
