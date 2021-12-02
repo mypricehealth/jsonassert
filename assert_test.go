@@ -12,6 +12,10 @@ var (
 	jsonMissingStrings = getJSON("testdata/missingStrings.json")
 	jsonNoEmptyValues  = getJSON("testdata/noEmpty.json")
 	jsonNewDataTypes   = getJSON("testdata/newDataTypes.json")
+	sliceComplete      = getJSON("testdata/array.json")
+	sliceNulls         = getJSON("testdata/arrayMissing.json")
+	sliceMissing       = getJSON("testdata/arrayMissing.json")
+	sliceNewDataTypes  = getJSON("testdata/arrayNewDataType.json")
 )
 
 type receiveStruct struct {
@@ -32,6 +36,11 @@ type subStruct struct {
 	B string `json:"b"`
 }
 
+type sliceStruct struct {
+	Item1 string `json:"item1"`
+	Item2 string `json:"item2"`
+}
+
 func getJSON(filename string) string {
 	data, _ := os.ReadFile(filename)
 	return string(data)
@@ -50,6 +59,7 @@ func TestStructCheck(t *testing.T) {
 		{"bad filename", "bogus.json", &receiveStruct{}, []error{fmt.Errorf("open bogus.json: The system cannot find the file specified.")}},
 		{"wrong result type", "testdata/nulls.json", &jsonComplete, []error{fmt.Errorf("invalid argument: result must be a pointer to a struct, slice, or map, but got *string")}},
 		{"different data types", "testdata/newDataTypes.json", &receiveStruct{}, []error{fmt.Errorf("error decoding json in testdata/newDataTypes.json: json: cannot unmarshal string into Go struct field receiveStruct.num of type float64")}},
+		{"slice", "testdata/array.json", &[]sliceStruct{}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -60,7 +70,7 @@ func TestStructCheck(t *testing.T) {
 	}
 }
 
-func TestEqual(t *testing.T) {
+func TestEqualMap(t *testing.T) {
 	tests := []struct {
 		name           string
 		json1          string
@@ -95,14 +105,45 @@ func TestEqual(t *testing.T) {
 			fmt.Errorf(`str mismatch. "2" vs. 2`),
 			fmt.Errorf(`str-empty mismatch. "" vs. 0`),
 		}},
-		{"", `{"a": null}`, `{"a": {"1":"", "2":"b"}}`, []error{fmt.Errorf("a mismatch. <nil> vs. map[1: 2:b]")}},
+		{"with children", `{"a": null}`, `{"a": {"1":"", "2":"b"}}`, []error{fmt.Errorf("a mismatch. <nil> vs. map[1: 2:b]")}},
 		{"invalid file 1", `{`, jsonComplete, []error{fmt.Errorf("error unmarshalling json1: unexpected end of JSON input")}},
 		{"invalid file 2", jsonComplete, `{`, []error{fmt.Errorf("error unmarshalling json2: unexpected end of JSON input")}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeT := &fakeTester{}
-			Equal(fakeT, []byte(tt.json1), []byte(tt.json2))
+			EqualMap(fakeT, []byte(tt.json1), []byte(tt.json2))
+			checkErrors(t, tt.expectedErrors, fakeT.errors)
+		})
+	}
+}
+
+func TestEqualSlice(t *testing.T) {
+	tests := []struct {
+		name           string
+		json1          string
+		json2          string
+		expectedErrors []error
+	}{
+		{"same string", sliceComplete, sliceComplete, nil},
+		{"null on the right", sliceComplete, sliceNulls, nil},
+		{"null on the left", sliceNulls, sliceComplete, nil},
+		{"missing on the right", sliceComplete, sliceMissing, nil},
+		{"missing on the left", sliceMissing, sliceComplete, nil},
+		{"totally different values", sliceComplete, sliceNewDataTypes, []error{
+			fmt.Errorf(`[0].item1 mismatch. "" vs. 1`),
+			fmt.Errorf(`[0].item2 mismatch. "value2" vs. 2`),
+			fmt.Errorf(`[1].item1 mismatch. "value3" vs. 3`),
+			fmt.Errorf(`[1].item2 mismatch. "" vs. 4`),
+		}},
+		{"with children", `[{"a": null}]`, `[{"a": {"1":"", "2":"b"}}]`, []error{fmt.Errorf("[0].a mismatch. <nil> vs. map[1: 2:b]")}},
+		{"invalid file 1", `[`, sliceComplete, []error{fmt.Errorf("error unmarshalling json1: unexpected end of JSON input")}},
+		{"invalid file 2", sliceComplete, `[`, []error{fmt.Errorf("error unmarshalling json2: unexpected end of JSON input")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeT := &fakeTester{}
+			EqualSlice(fakeT, []byte(tt.json1), []byte(tt.json2))
 			checkErrors(t, tt.expectedErrors, fakeT.errors)
 		})
 	}

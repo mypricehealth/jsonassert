@@ -29,7 +29,8 @@ func StructCheck(t Testing, filename string, result interface{}) {
 	t.Helper()
 	var originalText, encodedText bytes.Buffer
 
-	if err := resultArgCheck(result); err != nil {
+	isMapType, err := resultArgCheck(result)
+	if err != nil {
 		t.Error(err)
 		return
 	}
@@ -48,23 +49,14 @@ func StructCheck(t Testing, filename string, result interface{}) {
 	}
 
 	json.NewEncoder(&encodedText).Encode(result)
-	Equal(t, originalText.Bytes(), encodedText.Bytes())
+	if isMapType {
+		EqualMap(t, originalText.Bytes(), encodedText.Bytes())
+	} else {
+		EqualSlice(t, originalText.Bytes(), encodedText.Bytes())
+	}
 }
 
-func resultArgCheck(result interface{}) error {
-	resT := reflect.TypeOf(result)
-	resKind := resT.Kind()
-	var elemKind reflect.Kind
-	if resKind == reflect.Ptr {
-		elemKind = resT.Elem().Kind()
-	}
-	if resKind != reflect.Ptr || elemKind != reflect.Struct && elemKind != reflect.Map && elemKind != reflect.Slice && elemKind != reflect.Array {
-		return fmt.Errorf("invalid argument: result must be a pointer to a struct, slice, or map, but got %T", result)
-	}
-	return nil
-}
-
-// Equal takes as its input two JSON byte slices and causes tests to fail as appropriate
+// EqualMap takes as its input two JSON byte slices and causes tests to fail as appropriate
 // if the JSON doesn't match. Values are considered to be equivalent if they are:
 //   1. Both the same data type and values match
 //   2. One value is nil and the other is the default value for its data type. This is done since Go may
@@ -74,7 +66,7 @@ func resultArgCheck(result interface{}) error {
 //      	b. 0.0 and nil
 //      	c. false and nil
 //      	d. empty slice and nil
-func Equal(t Testing, json1, json2 []byte) {
+func EqualMap(t Testing, json1, json2 []byte) {
 	t.Helper()
 	json1Map, err1 := getJSONMap(json1)
 	json2Map, err2 := getJSONMap(json2)
@@ -90,9 +82,54 @@ func Equal(t Testing, json1, json2 []byte) {
 	compareMaps(t, "", json1Map, json2Map)
 }
 
+// EqualSlice takes as its input two JSON byte slices and causes tests to fail as appropriate
+// if the JSON doesn't match. Values are considered to be equivalent if they are:
+//   1. Both the same data type and values match
+//   2. One value is nil and the other is the default value for its data type. This is done since Go may
+//      not serialize JSON the same way as other languages. Go is very strict and consistent, but the JSON
+//      you have may not be. To make that easier, these values are considered equal:
+//      	a. "" and nil
+//      	b. 0.0 and nil
+//      	c. false and nil
+//      	d. empty slice and nil
+func EqualSlice(t Testing, json1, json2 []byte) {
+	t.Helper()
+	json1Slice, err1 := getJSONSlice(json1)
+	json2Slice, err2 := getJSONSlice(json2)
+	if err1 != nil || err2 != nil {
+		if err1 != nil {
+			t.Errorf("error unmarshalling json1: %v", err1)
+		}
+		if err2 != nil {
+			t.Errorf("error unmarshalling json2: %v", err2)
+		}
+		return
+	}
+	compareSlices(t, "", json1Slice, json2Slice)
+}
+
+func resultArgCheck(result interface{}) (bool, error) {
+	resT := reflect.TypeOf(result)
+	resKind := resT.Kind()
+	var elemKind reflect.Kind
+	if resKind == reflect.Ptr {
+		elemKind = resT.Elem().Kind()
+	}
+	isMapType := elemKind == reflect.Struct || elemKind == reflect.Map
+	if resKind != reflect.Ptr || elemKind != reflect.Struct && elemKind != reflect.Map && elemKind != reflect.Slice && elemKind != reflect.Array {
+		return isMapType, fmt.Errorf("invalid argument: result must be a pointer to a struct, slice, or map, but got %T", result)
+	}
+	return isMapType, nil
+}
+
 func getJSONMap(text []byte) (map[string]interface{}, error) {
 	jsonMap := make(map[string]interface{})
 	return jsonMap, json.Unmarshal(text, &jsonMap)
+}
+
+func getJSONSlice(text []byte) ([]interface{}, error) {
+	jsonSlice := []interface{}{}
+	return jsonSlice, json.Unmarshal(text, &jsonSlice)
 }
 
 func compareMaps(t Testing, location string, map1, map2 map[string]interface{}) {
