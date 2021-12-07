@@ -50,9 +50,9 @@ func StructCheck(t Testing, filename string, result interface{}) {
 
 	json.NewEncoder(&encodedText).Encode(result)
 	if isMapType {
-		EqualMap(t, originalText.Bytes(), encodedText.Bytes())
+		notifyErrors(t, filename, EqualMap(originalText.Bytes(), encodedText.Bytes()))
 	} else {
-		EqualSlice(t, originalText.Bytes(), encodedText.Bytes())
+		notifyErrors(t, filename, EqualSlice(originalText.Bytes(), encodedText.Bytes()))
 	}
 }
 
@@ -66,20 +66,20 @@ func StructCheck(t Testing, filename string, result interface{}) {
 //      	b. 0.0 and nil
 //      	c. false and nil
 //      	d. empty slice and nil
-func EqualMap(t Testing, json1, json2 []byte) {
-	t.Helper()
+func EqualMap(json1, json2 []byte) []error {
 	json1Map, err1 := getJSONMap(json1)
 	json2Map, err2 := getJSONMap(json2)
 	if err1 != nil || err2 != nil {
+		var errors []error
 		if err1 != nil {
-			t.Errorf("error unmarshalling json1: %v", err1)
+			errors = append(errors, fmt.Errorf("error unmarshalling json1: %v", err1))
 		}
 		if err2 != nil {
-			t.Errorf("error unmarshalling json2: %v", err2)
+			errors = append(errors, fmt.Errorf("error unmarshalling json2: %v", err2))
 		}
-		return
+		return errors
 	}
-	compareMaps(t, "", json1Map, json2Map)
+	return compareMaps("", json1Map, json2Map)
 }
 
 // EqualSlice takes as its input two JSON byte slices and causes tests to fail as appropriate
@@ -92,20 +92,29 @@ func EqualMap(t Testing, json1, json2 []byte) {
 //      	b. 0.0 and nil
 //      	c. false and nil
 //      	d. empty slice and nil
-func EqualSlice(t Testing, json1, json2 []byte) {
-	t.Helper()
+func EqualSlice(json1, json2 []byte) []error {
 	json1Slice, err1 := getJSONSlice(json1)
 	json2Slice, err2 := getJSONSlice(json2)
 	if err1 != nil || err2 != nil {
+		var errors []error
 		if err1 != nil {
-			t.Errorf("error unmarshalling json1: %v", err1)
+			errors = append(errors, fmt.Errorf("error unmarshalling json1: %v", err1))
 		}
 		if err2 != nil {
-			t.Errorf("error unmarshalling json2: %v", err2)
+			errors = append(errors, fmt.Errorf("error unmarshalling json2: %v", err2))
 		}
-		return
+		return errors
 	}
-	compareSlices(t, "", json1Slice, json2Slice)
+	return compareSlices("", json1Slice, json2Slice)
+}
+
+func notifyErrors(t Testing, filename string, errors []error) {
+	if len(errors) > 0 {
+		t.Errorf("*** %d errors in %s", len(errors), filename)
+	}
+	for _, err := range errors {
+		t.Error(err)
+	}
 }
 
 func resultArgCheck(result interface{}) (bool, error) {
@@ -132,16 +141,18 @@ func getJSONSlice(text []byte) ([]interface{}, error) {
 	return jsonSlice, json.Unmarshal(text, &jsonSlice)
 }
 
-func compareMaps(t Testing, location string, map1, map2 map[string]interface{}) {
+func compareMaps(location string, map1, map2 map[string]interface{}) []error {
+	var errors []error
 	for _, key := range keys(map1) {
-		compareValues(t, getLocation(location, key), map1[key], map2[key])
+		errors = append(errors, compareValues(getLocation(location, key), map1[key], map2[key])...)
 	}
 	for _, key := range keys(map2) {
 		value1, ok := map1[key]
 		if !ok { // matched values were checked in the first loop, so only check missing ones here
-			compareValues(t, getLocation(location, key), value1, map2[key])
+			errors = append(errors, compareValues(getLocation(location, key), value1, map2[key])...)
 		}
 	}
+	return errors
 }
 
 func getLocation(location, key string) string {
@@ -160,38 +171,38 @@ func keys(v map[string]interface{}) []string {
 	return keys
 }
 
-func compareValues(t Testing, location string, value1, value2 interface{}) {
+func compareValues(location string, value1, value2 interface{}) []error {
 	switch v1 := value1.(type) {
 	case bool:
 		if !boolEqual(v1, value2) {
-			notifyError(t, location, value1, value2)
+			return []error{notifyError(location, value1, value2)}
 		}
 	case float64:
 		if !floatEqual(v1, value2) {
-			notifyError(t, location, value1, value2)
+			return []error{notifyError(location, value1, value2)}
 		}
 	case map[string]interface{}:
 		v2, ok := value2.(map[string]interface{})
 		if value2 != nil && !ok {
-			notifyError(t, location, value1, value2)
-			return
+			return []error{notifyError(location, value1, value2)}
 		}
-		compareMaps(t, location, v1, v2)
+		return compareMaps(location, v1, v2)
 	case string:
 		if !stringEqual(v1, value2) {
-			notifyError(t, location, value1, value2)
+			return []error{notifyError(location, value1, value2)}
 		}
 	case nil:
 		if !isEmpty(value2) {
-			notifyError(t, location, value1, value2)
+			return []error{notifyError(location, value1, value2)}
 		}
 	default:
-		compareSlices(t, location, value1, value2)
+		return compareSlices(location, value1, value2)
 	}
+	return nil
 }
 
-func notifyError(t Testing, location string, value1, value2 interface{}) {
-	t.Errorf("%s mismatch. %v vs. %v", location, quoteString(value1), quoteString(value2))
+func notifyError(location string, value1, value2 interface{}) error {
+	return fmt.Errorf("%s mismatch. %v vs. %v", location, quoteString(value1), quoteString(value2))
 }
 
 func quoteString(v interface{}) string {
@@ -234,24 +245,25 @@ func stringEqual(value1 string, value2 interface{}) bool {
 	return value1 == value2 || value1 == "" && value2 == nil
 }
 
-func compareSlices(t Testing, location string, value1, value2 interface{}) {
+func compareSlices(location string, value1, value2 interface{}) []error {
 	rv1 := reflect.ValueOf(value1)
 	rv2 := reflect.ValueOf(value2)
 	if rv1.Kind() != reflect.Slice || (rv2.Kind() != reflect.Slice && rv2 != nilVal) {
-		notifyError(t, location, value1, value2)
-		return
+		return []error{notifyError(location, value1, value2)}
 	}
 	len1 := sliceLen(rv1)
 	if len1 != sliceLen(rv2) {
-		notifyError(t, location, value1, value2)
-		return
+		return []error{notifyError(location, value1, value2)}
 	}
 	if len1 == 0 {
-		return
+		return nil
 	}
+
+	var errors []error
 	for i := 0; i < len1; i++ {
-		compareValues(t, fmt.Sprintf("%s[%d]", location, i), rv1.Index(i).Interface(), rv2.Index(i).Interface())
+		errors = append(errors, compareValues(fmt.Sprintf("%s[%d]", location, i), rv1.Index(i).Interface(), rv2.Index(i).Interface())...)
 	}
+	return errors
 }
 
 func sliceLen(v reflect.Value) int {

@@ -54,6 +54,7 @@ func TestStructCheck(t *testing.T) {
 		expectedErrors []error
 	}{
 		{"everything matches", "testdata/complete.json", &receiveStruct{}, nil},
+		{"nothing matches", "testdata/complete.json", &subStruct{}, []error{fmt.Errorf("*** 6 errors in testdata/complete.json"), fmt.Errorf("arr mismatch. [1 2 3] vs. <nil>"), fmt.Errorf("b-true mismatch. true vs. <nil>"), fmt.Errorf("num mismatch. 1 vs. <nil>"), fmt.Errorf(`obj.a mismatch. "val" vs. <nil>`), fmt.Errorf(`obj.b mismatch. "val2" vs. <nil>`), fmt.Errorf(`str mismatch. "2" vs. <nil>`)}},
 		{"empty values all gone", "testdata/noEmpty.json", &receiveStruct{}, nil},
 		{"empty values are null", "testdata/nulls.json", &receiveStruct{}, nil},
 		{"bad filename", "bogus.json", &receiveStruct{}, []error{fmt.Errorf("open bogus.json: The system cannot find the file specified.")}},
@@ -111,9 +112,8 @@ func TestEqualMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeT := &fakeTester{}
-			EqualMap(fakeT, []byte(tt.json1), []byte(tt.json2))
-			checkErrors(t, tt.expectedErrors, fakeT.errors)
+			errs := EqualMap([]byte(tt.json1), []byte(tt.json2))
+			checkErrors(t, tt.expectedErrors, errs)
 		})
 	}
 }
@@ -142,9 +142,8 @@ func TestEqualSlice(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeT := &fakeTester{}
-			EqualSlice(fakeT, []byte(tt.json1), []byte(tt.json2))
-			checkErrors(t, tt.expectedErrors, fakeT.errors)
+			errs := EqualSlice([]byte(tt.json1), []byte(tt.json2))
+			checkErrors(t, tt.expectedErrors, errs)
 		})
 	}
 }
